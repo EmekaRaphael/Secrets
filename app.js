@@ -3,7 +3,6 @@ import bodyParser from "body-parser";
 import ejs from "ejs";
 import mongoose from "mongoose";
 import encrypt from "mongoose-encryption";
-import _ from "lodash";
 
 const app = express();
 const port = 3000;
