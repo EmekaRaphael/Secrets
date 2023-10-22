@@ -3,6 +3,9 @@ import bodyParser from "body-parser";
 import ejs from "ejs";
 import mongoose from "mongoose";
 import encrypt from "mongoose-encryption";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
 const port = 3000;
@@ -16,7 +19,7 @@ mongoose.connect("mongodb://127.0.0.1:27017/userDB", {
   useUnifiedTopology: true
 });
 
-const userSchema = new mongoose.Schema({gi
+const userSchema = new mongoose.Schema({
     email: String,
     password: String
 });
