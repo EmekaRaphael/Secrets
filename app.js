@@ -1,9 +1,9 @@
-import express from "express";
-import bodyParser from "body-parser";
-import ejs from "ejs";
-import mongoose from "mongoose";
-import encrypt from "mongoose-encryption";
-import dotenv from "dotenv";
+const express = require("express");
+const bodyParser = require("body-parser");
+const ejs = require("ejs");
+const mongoose = require("mongoose");
+const md5 = require("mongoose");
+const dotenv = require("dotenv");
 
 dotenv.config();
 
@@ -26,11 +26,6 @@ const userSchema = new mongoose.Schema({
 
 const secret = process.env.SECRET;
 
-userSchema.plugin(encrypt, { 
-    secret: secret,
-    encryptedFields: ["password"]
-});
-
 const User = new mongoose.model("User", userSchema);
 
 app.get("/", function(req, res) {
@@ -50,7 +45,7 @@ app.post("/register", async function(req, res) {
         // Create a new user
         const newUser = new User({
             email: req.body.username,
-            password: req.body.password
+            password: md5(req.body.password)
         });
 
         // Save the user to the database
