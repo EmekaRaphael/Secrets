@@ -8,13 +8,13 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT;
 
 app.use(express.static("public"));
 app.set("view engine", "ejs");
 app.use(bodyParser.urlencoded({ extended: true }));
 
-mongoose.connect("mongodb://127.0.0.1:27017/userDB", {
+mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 });
@@ -24,7 +24,8 @@ const userSchema = new mongoose.Schema({
     password: String
 });
 
-const secret = "OurPrettyLittleSecret.";
+const secret = process.env.SECRET;
+
 userSchema.plugin(encrypt, { 
     secret: secret,
     encryptedFields: ["password"]
@@ -94,6 +95,6 @@ app.get("/submit", function(req, res){
     res.render("submit");
 });
 
-app.listen(3000, function() {
+app.listen(process.env.PORT, function() {
     console.log(`Server started on port ${port}!!`);
 });
