@@ -2,8 +2,10 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const md5 = require("md5");
 const dotenv = require("dotenv");
+const bcrypt = require("bcrypt");
+
+const saltRounds = 10;
 
 dotenv.config();
 
@@ -40,16 +42,18 @@ app.get("/register", function(req, res) {
     res.render("register");
 });
 
-app.post("/register", async function(req, res) {
+app.post("/register", function(req, res) {
+    bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
+        
     try {
         // Create a new user
         const newUser = new User({
             email: req.body.username,
-            password: md5(req.body.password)
+            password: hash
         });
 
         // Save the user to the database
-        await newUser.save();
+        newUser.save();
         console.log("Saved new User!");
         res.render("secrets");
         
@@ -58,26 +62,30 @@ app.post("/register", async function(req, res) {
         console.error(error);
         res.status(500).json({ error: "Internal server error." });
     }
+    });
 });
 
 app.post("/login", async function(req, res) {
     const username = req.body.username;
-    const password = md5(req.body.password);
+    const password = req.body.password;
 
     try {
         let existingUser = await User.findOne({ email: username });
 
         // Check if the user already exists
         if (existingUser) {
-            if (existingUser.password === password) {
+            const passwordMatch = await bcrypt.compare(password, existingUser.password);
+            if (passwordMatch) {
                 res.render("secrets");
                 console.log("User Logged in Successfully!");
             } else {
-                console.log("User not found, Register new Account");
+                console.log("Incorrect password. User not logged in.");
+                // You might want to redirect or show an error message here.
             }
         }
     } catch (err) {
         console.error(err);
+        res.status(500).json({ error: "Internal server error." });
     }
 });
 
