@@ -6,6 +6,8 @@ const dotenv = require("dotenv");
 const session = require('express-session');
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require("mongoose-findorcreate");
 
 const saltRounds = 10;
 
@@ -20,17 +22,18 @@ app.use(bodyParser.urlencoded({
      extended: true 
 }));
 
+
 app.use(session({
     secret: "Our little secret",
     resave: false,
-    saveUninitialized: false
+    saveUninitialized: false,
 }));
 
 app.use(passport.initialize());
 app.use(passport.session());
 
 
-mongoose.connect(process.env.MONGODB_URI, {
+mongoose.connect("mongodb://127.0.0.1:27017/", {
   useNewUrlParser: true,
   useUnifiedTopology: true
 });
@@ -41,6 +44,7 @@ const userSchema = new mongoose.Schema({
 });
 
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
 
 const secret = process.env.SECRET;
 
@@ -51,9 +55,26 @@ passport.use(User.createStrategy());
 passport.serializeUser(User.serializeUser());
 passport.deserializeUser(User.deserializeUser());
 
+passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets"
+    // userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+))
+
 app.get("/", function(req, res) {
     res.render("home");
 });
+
+app.get("/oauth/google",
+    passport.authenticate("google", { scope: ["profile", "email"] })
+);
 
 app.get("/login", function(req, res) {
     res.render("login");
@@ -78,34 +99,12 @@ app.post("/register", function(req, res) {
             res.redirect("/register");
         } else {
             passport.authenticate("local")(req, res, function(err, user) {
+                console.log("User Registered Successfully");
                 res.redirect("/secrets");
             });
         }
     });
 });
-
-/*app.post("/register", function(req, res) {
-    bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
-        
-    try {
-        // Create a new user
-        const newUser = new User({
-            email: req.body.username,
-            password: hash
-        });
-
-        // Save the user to the database
-        newUser.save();
-        console.log("Saved new User!");
-        res.render("secrets");
-        
-        // Redirect or send a response based on your application flow
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Internal server error." });
-    }
-    });
-});*/
 
 app.post("/login", function(req, res) {
     const user = new User({
@@ -113,40 +112,28 @@ app.post("/login", function(req, res) {
         password: req.body.password
     });
 
-    req.login(user, function(err) {
+    // Use passport's local authentication strategy
+    passport.authenticate("local", function(err, user, info) {
         if (err) {
-            console.log(err);
-        } else {
-            passport.authenticate("local")(req, res, function() {
-                res.redirect("/secrets");
-            });
+            console.error(err);
+            return res.redirect("/login");
         }
-    });
-});
-
-/*app.post("/login", async function(req, res) {
-    const username = req.body.username;
-    const password = req.body.password;
-
-    try {
-        let existingUser = await User.findOne({ email: username });
-
-        // Check if the user already exists
-        if (existingUser) {
-            const passwordMatch = await bcrypt.compare(password, existingUser.password);
-            if (passwordMatch) {
-                res.render("secrets");
-                console.log("User Logged in Successfully!");
-            } else {
-                console.log("Incorrect password. User not logged in.");
-                // You might want to redirect or show an error message here.
+        if (!user) {
+            // Handle incorrect credentials
+            console.log("Incorrect username or password");
+            return res.redirect("/login");
+        }
+        req.logIn(user, function(err) {
+            if (err) {
+                console.error(err);
+                return res.redirect("/login");
             }
-        }
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Internal server error." });
-    }
-});*/
+            // Authentication successful, redirect to secrets page
+            console.log("User Logged in Successfully");
+            return res.redirect("/secrets");
+        });
+    })(req, res);
+});
 
 app.get("/logout", function(req, res) {
     req.logout(function(err) {
@@ -162,7 +149,32 @@ app.get("/logout", function(req, res) {
 
 
 app.get("/submit", function(req, res){
-    res.render("submit");
+    if (req.isAuthenticated()) {
+        res.render("submit");
+    } else {
+        res.redirect("/login");
+    }
+});
+
+app.post("/submit", async function(req, res) {
+    const submittedSecret = req.body.secret;
+    const userId = req.user.id;
+
+    try {
+        const foundUser = await User.findById(userId);
+
+        if (foundUser) {
+            foundUser.secret = submittedSecret;
+            await foundUser.save();
+            res.redirect("/secrets");
+        } else {
+            console.log("User not found");
+            res.redirect("/login");
+        }
+    } catch (error) {
+        console.error(error);
+        res.redirect("/login");
+    }
 });
 
 app.listen(process.env.PORT, function() {
