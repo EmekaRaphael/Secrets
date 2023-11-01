@@ -40,7 +40,9 @@ mongoose.connect(process.env.MONGODB_URI, {
 
 const userSchema = new mongoose.Schema({
     email: String,
-    password: String
+    password: String,
+    googleId: String,
+    secret: String
 });
 
 userSchema.plugin(passportLocalMongoose);
@@ -58,8 +60,8 @@ passport.deserializeUser(User.deserializeUser());
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: "http://localhost:3000/auth/google/secrets"
-    // userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
   },
   function(accessToken, refreshToken, profile, cb) {
     User.findOrCreate({ googleId: profile.id }, function (err, user) {
@@ -76,6 +78,13 @@ app.get("/oauth/google",
     passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
+app.get("/auth/google/secrets",
+  passport.authenticate('google', { failureRedirect: "/login" }),
+  function(req, res) {
+    // Successful authentication, redirect to secrets.
+    res.redirect("/secrets");
+  });
+
 app.get("/login", function(req, res) {
     res.render("login");
 });
@@ -84,12 +93,59 @@ app.get("/register", function(req, res) {
     res.render("register");
 });
 
-app.get("/secrets", function(req, res) {
+app.get("/secrets", async function(req, res) {
+    try {
+        const foundUsers = await User.find({ "secret": { $ne: null } });
+        
+        if (foundUsers) {
+            res.render("secrets", { usersWithSecrets: foundUsers });
+        } else {
+            console.log("No users found with secrets");
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Internal Server Error");
+    }
+});
+
+app.get("/submit", function(req, res){
     if (req.isAuthenticated()) {
-        res.render("secrets");
+        res.render("submit");
     } else {
         res.redirect("/login");
     }
+});
+
+app.post("/submit", async function(req, res) {
+    const submittedSecret = req.body.secret;
+    const userId = req.user.id;
+
+    try {
+        const foundUser = await User.findById(userId);
+
+        if (foundUser) {
+            foundUser.secret = submittedSecret;
+            await foundUser.save();
+            res.redirect("/secrets");
+        } else {
+            console.log("User not found");
+            res.redirect("/login");
+        }
+    } catch (error) {
+        console.error(error);
+        res.redirect("/login");
+    }
+});
+
+app.get("/logout", function(req, res) {
+    req.logout(function(err) {
+        if (err) {
+            // Handle any potential errors here
+            console.error(err);
+        }
+        console.log("User Logged out Successfully!");
+        res.redirect("/");
+    });
 });
 
 app.post("/register", function(req, res) {
@@ -135,47 +191,6 @@ app.post("/login", function(req, res) {
     })(req, res);
 });
 
-app.get("/logout", function(req, res) {
-    req.logout(function(err) {
-        if (err) {
-            // Handle any potential errors here
-            console.error(err);
-        }
-        console.log("User Logged out Successfully!");
-        res.redirect("/");
-    });
-});
-
-
-
-app.get("/submit", function(req, res){
-    if (req.isAuthenticated()) {
-        res.render("submit");
-    } else {
-        res.redirect("/login");
-    }
-});
-
-app.post("/submit", async function(req, res) {
-    const submittedSecret = req.body.secret;
-    const userId = req.user.id;
-
-    try {
-        const foundUser = await User.findById(userId);
-
-        if (foundUser) {
-            foundUser.secret = submittedSecret;
-            await foundUser.save();
-            res.redirect("/secrets");
-        } else {
-            console.log("User not found");
-            res.redirect("/login");
-        }
-    } catch (error) {
-        console.error(error);
-        res.redirect("/login");
-    }
-});
 
 app.listen(process.env.PORT, function() {
     console.log(`Server started on port ${port}!!`);
